@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MushroomCurrentStatus {
+  ACTIVE
+  DEFEATED
+  UNKNOWN
+}
+
+enum PredictionStatus {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum ObservationTrustStatus {
+  ACCEPTED
+  FLAGGED
+}
+
+enum RefreshJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETE
+  FAILED
+}
+
+model MushroomLocation {
+  id           String                @id @default(cuid())
+  externalKey  String                @unique
+  title        String?
+  latitude     Float
+  longitude    Float
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  observations Observation[]
+  derivedState DerivedMushroomState?
+  prediction   Prediction?
+  refreshJobs  RefreshJob[]
+
+  @@index([latitude, longitude])
+}
+
+model Observation {
+  id                            String                 @id @default(cuid())
+  locationId                    String
+  observerKey                   String
+  observedAt                    DateTime
+  isAvailable                   Boolean
+  mushroomType                  String?
+  defeatedAt                    DateTime?
+  trustStatus                   ObservationTrustStatus @default(ACCEPTED)
+  trustFlags                    String[]
+  derivedConflictsWithCurrentState Boolean            @default(false)
+  rawPayload                    Json?
+  createdAt                     DateTime               @default(now())
+  updatedAt                     DateTime               @updatedAt
+  location                      MushroomLocation       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, observedAt])
+  @@index([observerKey, createdAt])
+}
+
+model DerivedMushroomState {
+  id                     String                @id @default(cuid())
+  locationId             String                @unique
+  currentStatus          MushroomCurrentStatus
+  confidence             Int
+  sourceObservationCount Int
+  lastObservedAt         DateTime
+  staleAt                DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  location               MushroomLocation      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+}
+
+model Prediction {
+  id                       String           @id @default(cuid())
+  locationId               String           @unique
+  status                   PredictionStatus @default(UNAVAILABLE)
+  predictedCompletionTime  DateTime?
+  predictedNextSpawnTime   DateTime?
+  confidence               Int
+  provenance               String
+  lastComputedAt           DateTime
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  location                 MushroomLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+}
+
+model RefreshJob {
+  id         String           @id @default(cuid())
+  locationId String
+  status     RefreshJobStatus @default(PENDING)
+  error      String?
+  createdAt  DateTime         @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+  location   MushroomLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([locationId, createdAt])
+}
