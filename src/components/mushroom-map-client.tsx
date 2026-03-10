@@ -325,6 +325,7 @@ export function MushroomMapClient() {
 
       marker.getElement().addEventListener("click", () => {
         setSelectedId(mushroom.id);
+        applySelectedMushroomToForm(mushroom);
       });
 
       return marker;
@@ -544,6 +545,7 @@ export function MushroomMapClient() {
       refreshMushroomsRef.current();
     });
     map.on("click", (event) => {
+      setSelectedId(null);
       setFormState((current) => ({
         ...current,
         latitude: event.lngLat.lat.toFixed(5),
@@ -559,14 +561,6 @@ export function MushroomMapClient() {
       mapRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (!selectedMushroom) {
-      return;
-    }
-
-    applySelectedMushroomToForm(selectedMushroom);
-  }, [applySelectedMushroomToForm, selectedMushroom]);
 
   useEffect(() => {
     syncCurrentLocationMarker(currentLocation.latitude, currentLocation.longitude);
@@ -754,7 +748,10 @@ export function MushroomMapClient() {
                 <button
                   key={mushroom.id}
                   className={`mushroom-row ${selectedMushroom?.id === mushroom.id ? "is-selected" : ""}`}
-                  onClick={() => setSelectedId(mushroom.id)}
+                  onClick={() => {
+                    setSelectedId(mushroom.id);
+                    applySelectedMushroomToForm(mushroom);
+                  }}
                   type="button"
                 >
                   <strong>{mushroom.title ?? mushroom.externalKey}</strong>

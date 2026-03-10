@@ -82,4 +82,54 @@ test.describe("Pikmin map app", () => {
     expect(markerCenterAfter.y).toBeGreaterThanOrEqual(mapBoxAfter.y - 10);
     expect(markerCenterAfter.y).toBeLessThanOrEqual(mapBoxAfter.y + mapBoxAfter.height + 10);
   });
+
+  test("manual map-picked coordinates survive viewport refresh instead of being overwritten by the selected mushroom", async ({ page }) => {
+    await page.goto("/");
+
+    const mapSurface = page.getByTestId("map-surface");
+    const mushroomRows = page.locator(".mushroom-list .mushroom-row");
+    const latitudeInput = page.getByLabel("Latitude");
+    const longitudeInput = page.getByLabel("Longitude");
+    const summary = page.getByTestId("form-coordinate-summary");
+
+    await expect(mapSurface).toBeVisible();
+    await expect(mushroomRows.first()).toBeVisible({ timeout: 15_000 });
+
+    await mushroomRows.first().click();
+    await expect(latitudeInput).toHaveValue("25.03361");
+    await expect(longitudeInput).toHaveValue("121.56456");
+
+    await mapSurface.click({ position: { x: 180, y: 180 } });
+
+    const pickedLatitude = await latitudeInput.inputValue();
+    const pickedLongitude = await longitudeInput.inputValue();
+
+    expect(pickedLatitude).not.toBe("25.03361");
+    expect(pickedLongitude).not.toBe("121.56456");
+    await expect(summary).toContainText(`${pickedLatitude}, ${pickedLongitude}`);
+
+    const mapBox = await mapSurface.boundingBox();
+
+    if (!mapBox) {
+      throw new Error("Failed to capture map bounds before refresh drag.");
+    }
+
+    const dragStart = {
+      x: mapBox.x + mapBox.width * 0.55,
+      y: mapBox.y + mapBox.height * 0.52,
+    };
+    const dragEnd = {
+      x: dragStart.x - 120,
+      y: dragStart.y + 80,
+    };
+
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await page.mouse.down();
+    await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 16 });
+    await page.mouse.up();
+
+    await expect(latitudeInput).toHaveValue(pickedLatitude);
+    await expect(longitudeInput).toHaveValue(pickedLongitude);
+    await expect(summary).toContainText(`${pickedLatitude}, ${pickedLongitude}`);
+  });
 });
