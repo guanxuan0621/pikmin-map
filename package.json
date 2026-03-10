@@ -9,7 +9,8 @@
     "prisma:generate": "prisma generate",
     "jobs:refresh": "tsx scripts/process-refresh-jobs.ts",
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "test:smoke": "tsx scripts/smoke-test.ts"
+    "test:smoke": "tsx scripts/smoke-test.ts",
+    "test:e2e": "prisma generate && playwright test"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +25,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",

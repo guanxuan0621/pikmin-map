@@ -664,7 +664,7 @@ export function MushroomMapClient() {
               {getCurrentLocationStatusMessage(currentLocation.status)}
             </p>
           </div>
-          <div ref={mapContainerRef} className="map-surface" />
+          <div ref={mapContainerRef} className="map-surface" data-testid="map-surface" />
         </div>
 
         <aside className="sidebar">
@@ -798,7 +798,7 @@ export function MushroomMapClient() {
             <div className="report-helper">
               <div className="report-helper__summary">
                 <strong>{selectedMushroom?.title ?? "尚未選取蘑菇"}</strong>
-                <span>
+                <span data-testid="form-coordinate-summary">
                   目前表單座標：{formState.latitude}, {formState.longitude}
                 </span>
               </div>
