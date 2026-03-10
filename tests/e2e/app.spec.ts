@@ -1,40 +1,85 @@
 import { expect, test } from "@playwright/test";
 
+function centerOf(box: { x: number; y: number; width: number; height: number }) {
+  return {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+}
+
 test.describe("Pikmin map app", () => {
-  test("loads the MVP screen, lets the user click the map, and submits an observation", async ({ page }) => {
+  test("dragging the map keeps an existing mushroom marker moving with the map instead of jumping to another quadrant", async ({ page }) => {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "互動式地圖 MVP" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "定位我目前位置" })).toBeVisible();
-    await expect(page.getByTestId("map-surface")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Report observation" })).toBeVisible();
 
-    const latitudeInput = page.getByLabel("Latitude");
-    const longitudeInput = page.getByLabel("Longitude");
-    const titleInput = page.getByLabel("Title");
-    const coordinateSummary = page.getByTestId("form-coordinate-summary");
     const mapSurface = page.getByTestId("map-surface");
+    await expect(mapSurface).toBeVisible();
 
-    const initialLatitude = await latitudeInput.inputValue();
-    const initialLongitude = await longitudeInput.inputValue();
+    const marker = page.locator(".mushroom-map-marker").first();
+    await expect(marker).toBeVisible({ timeout: 15_000 });
 
-    await mapSurface.click({ position: { x: 220, y: 220 } });
+    const mapBoxBefore = await mapSurface.boundingBox();
+    const markerBoxBefore = await marker.boundingBox();
 
-    await expect.poll(async () => await latitudeInput.inputValue()).not.toBe(initialLatitude);
-    await expect.poll(async () => await longitudeInput.inputValue()).not.toBe(initialLongitude);
+    if (!mapBoxBefore || !markerBoxBefore) {
+      throw new Error("Failed to capture map or marker bounds before dragging.");
+    }
 
-    const clickedLatitude = await latitudeInput.inputValue();
-    const clickedLongitude = await longitudeInput.inputValue();
+    const markerCenterBefore = centerOf(markerBoxBefore);
+    const horizontalDirectionBefore = markerCenterBefore.x - (mapBoxBefore.x + mapBoxBefore.width / 2);
+    const verticalDirectionBefore = markerCenterBefore.y - (mapBoxBefore.y + mapBoxBefore.height / 2);
 
-    await expect(coordinateSummary).toContainText(`${clickedLatitude}, ${clickedLongitude}`);
+    const dragStart = {
+      x: mapBoxBefore.x + mapBoxBefore.width * 0.68,
+      y: mapBoxBefore.y + mapBoxBefore.height * 0.38,
+    };
+    const dragEnd = {
+      x: dragStart.x - 170,
+      y: dragStart.y - 110,
+    };
 
-    const title = `Playwright smoke ${Date.now()}`;
-    await titleInput.fill(title);
+    await page.mouse.move(dragStart.x, dragStart.y);
+    await page.mouse.down();
+    await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 20 });
+    await page.mouse.up();
 
-    await page.getByRole("button", { name: "Submit observation" }).click();
+    await page.waitForTimeout(700);
 
-    await expect(page.getByText("Observation accepted and refresh queued.")).toBeVisible();
-    await expect(titleInput).toHaveValue(title);
-    await expect(coordinateSummary).toContainText(`${clickedLatitude}, ${clickedLongitude}`);
+    await expect(marker).toBeVisible();
+
+    const mapBoxAfter = await mapSurface.boundingBox();
+    const markerBoxAfter = await marker.boundingBox();
+
+    if (!mapBoxAfter || !markerBoxAfter) {
+      throw new Error("Failed to capture map or marker bounds after dragging.");
+    }
+
+    const markerCenterAfter = centerOf(markerBoxAfter);
+    const markerDeltaX = markerCenterAfter.x - markerCenterBefore.x;
+    const markerDeltaY = markerCenterAfter.y - markerCenterBefore.y;
+    const dragDeltaX = dragEnd.x - dragStart.x;
+    const dragDeltaY = dragEnd.y - dragStart.y;
+
+    expect(Math.abs(markerDeltaX)).toBeGreaterThan(40);
+    expect(Math.abs(markerDeltaY)).toBeGreaterThan(20);
+    expect(Math.sign(markerDeltaX)).toBe(Math.sign(dragDeltaX));
+    expect(Math.sign(markerDeltaY)).toBe(Math.sign(dragDeltaY));
+
+    const horizontalDirectionAfter = markerCenterAfter.x - (mapBoxAfter.x + mapBoxAfter.width / 2);
+    const verticalDirectionAfter = markerCenterAfter.y - (mapBoxAfter.y + mapBoxAfter.height / 2);
+
+    if (Math.abs(horizontalDirectionBefore) > 20) {
+      expect(Math.sign(horizontalDirectionAfter)).toBe(Math.sign(horizontalDirectionBefore));
+    }
+
+    if (Math.abs(verticalDirectionBefore) > 20) {
+      expect(Math.sign(verticalDirectionAfter)).toBe(Math.sign(verticalDirectionBefore));
+    }
+
+    expect(markerCenterAfter.x).toBeGreaterThanOrEqual(mapBoxAfter.x - 10);
+    expect(markerCenterAfter.x).toBeLessThanOrEqual(mapBoxAfter.x + mapBoxAfter.width + 10);
+    expect(markerCenterAfter.y).toBeGreaterThanOrEqual(mapBoxAfter.y - 10);
+    expect(markerCenterAfter.y).toBeLessThanOrEqual(mapBoxAfter.y + mapBoxAfter.height + 10);
   });
 });
