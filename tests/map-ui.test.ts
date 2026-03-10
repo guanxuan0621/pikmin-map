@@ -11,6 +11,7 @@ import {
   getMushroomMarkerShortLabel,
   getMushroomSourceLayerLabel,
   MARKER_LEGEND_ITEMS,
+  reconcileDisplayMushrooms,
 } from "../src/lib/mushrooms/map-ui";
 
 test("getMushroomMarkerTone maps active, defeated, and unknown states", () => {
@@ -135,4 +136,63 @@ test("buildMushroomMarkerShortLabelMap disambiguates duplicate short labels", ()
   assert.notEqual(labelMap.a, labelMap.b);
   assert.match(labelMap.a ?? "", /^とんか[12]$/);
   assert.match(labelMap.b ?? "", /^とんか[12]$/);
+});
+
+test("reconcileDisplayMushrooms keeps nearby candidate POIs visually stable across refreshes", () => {
+  const reconciled = reconcileDisplayMushrooms(
+    [
+      {
+        id: "prev-candidate",
+        externalKey: "35.58000:139.64000",
+        title: "BIG FOOT (OSM POI)",
+        latitude: 35.58,
+        longitude: 139.64,
+        sourceLayer: "candidate",
+      },
+    ],
+    [
+      {
+        id: "next-candidate",
+        externalKey: "35.58032:139.64028",
+        title: "BIG FOOT (OSM POI)",
+        latitude: 35.58032,
+        longitude: 139.64028,
+        sourceLayer: "candidate",
+      },
+    ],
+  );
+
+  assert.equal(reconciled[0]?.id, "prev-candidate");
+  assert.equal(reconciled[0]?.externalKey, "35.58000:139.64000");
+  assert.equal(reconciled[0]?.latitude, 35.58);
+  assert.equal(reconciled[0]?.longitude, 139.64);
+});
+
+test("reconcileDisplayMushrooms leaves confirmed mushrooms untouched", () => {
+  const reconciled = reconcileDisplayMushrooms(
+    [
+      {
+        id: "confirmed-prev",
+        externalKey: "35.58000:139.64000",
+        title: "Confirmed Mushroom",
+        latitude: 35.58,
+        longitude: 139.64,
+        sourceLayer: "confirmed",
+      },
+    ],
+    [
+      {
+        id: "confirmed-next",
+        externalKey: "35.58032:139.64028",
+        title: "Confirmed Mushroom",
+        latitude: 35.58032,
+        longitude: 139.64028,
+        sourceLayer: "confirmed",
+      },
+    ],
+  );
+
+  assert.equal(reconciled[0]?.id, "confirmed-next");
+  assert.equal(reconciled[0]?.latitude, 35.58032);
+  assert.equal(reconciled[0]?.longitude, 139.64028);
 });

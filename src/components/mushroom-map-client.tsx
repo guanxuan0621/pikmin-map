@@ -9,6 +9,7 @@ import type { MushroomLocationRecord, MushroomLocationSourceLayer } from "@/lib/
 import {
   buildCurrentLocationRecenterPlan,
   buildMushroomMarkerShortLabelMap,
+  reconcileDisplayMushrooms,
   CURRENT_LOCATION_ZOOM,
   getCurrentLocationActionLabel,
   getCurrentLocationStatusMessage,
@@ -397,10 +398,17 @@ export function MushroomMapClient() {
     }
 
     lastViewportKeyRef.current = viewportKey;
-    setMushrooms(payload.mushrooms);
-    setSelectedId((current) =>
-      payload.mushrooms.some((mushroom) => mushroom.id === current) ? current : payload.mushrooms[0]?.id ?? null,
-    );
+    setMushrooms((current) => {
+      const reconciledMushrooms = reconcileDisplayMushrooms(current, payload.mushrooms);
+
+      setSelectedId((selected) =>
+        reconciledMushrooms.some((mushroom) => mushroom.id === selected)
+          ? selected
+          : reconciledMushrooms[0]?.id ?? null,
+      );
+
+      return reconciledMushrooms;
+    });
   }, []);
 
   const refreshMushrooms = useCallback(() => {
