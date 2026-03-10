@@ -24,6 +24,7 @@ import type {
 import {
   buildCurrentLocationRecenterPlan,
   buildMushroomMarkerShortLabelMap,
+  reconcileDisplayMushrooms,
   CURRENT_LOCATION_ZOOM,
   getCurrentLocationActionLabel,
   getCurrentLocationStatusMessage,
@@ -453,11 +454,18 @@ export function MushroomMapClient() {
       setCachedMushroomsPayload(cacheKey, resolvedPayload);
       return resolvedPayload;
     });
-    const visibleMushrooms = getVisibleMushroomsFromCachedPayload(nextCachedPayload, viewport);
+    const visibleMushrooms = reconcileDisplayMushrooms(
+      mushroomsRef.current,
+      getVisibleMushroomsFromCachedPayload(nextCachedPayload, viewport),
+    );
 
+    lastViewportKeyRef.current = viewportKey;
+    mushroomsRef.current = visibleMushrooms;
     setMushrooms(visibleMushrooms);
     setSelectedId((current) =>
-      visibleMushrooms.some((mushroom) => mushroom.id === current) ? current : visibleMushrooms[0]?.id ?? null,
+      visibleMushrooms.some((mushroom) => mushroom.id === current)
+        ? current
+        : visibleMushrooms[0]?.id ?? null,
     );
   }, []);
 

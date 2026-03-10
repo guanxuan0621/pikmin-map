@@ -1,3 +1,4 @@
+import { getDistanceMeters } from "@/lib/mushrooms/geo";
 import type { MushroomLocationRecord, MushroomLocationSourceLayer } from "@/lib/mushrooms/types";
 
 export type MushroomMarkerTone = "active" | "defeated" | "unknown";
@@ -143,6 +144,69 @@ export function buildMushroomMarkerShortLabelMap(
   }
 
   return labelMap;
+}
+
+function getStableCandidateSemanticKey(location: MushroomLocationRecord): string {
+  return [
+    location.sourceLayer ?? "confirmed",
+    stripMarkerSourceSuffix(location.title ?? location.externalKey).toLowerCase(),
+  ].join("::");
+}
+
+export function reconcileDisplayMushrooms(
+  previousLocations: MushroomLocationRecord[],
+  nextLocations: MushroomLocationRecord[],
+  maxSnapDistanceMeters = 80,
+): MushroomLocationRecord[] {
+  if (previousLocations.length === 0 || nextLocations.length === 0) {
+    return nextLocations;
+  }
+
+  const previousCandidatesByKey = previousLocations.reduce<Map<string, MushroomLocationRecord[]>>(
+    (groups, location) => {
+      if ((location.sourceLayer ?? "confirmed") !== "candidate") {
+        return groups;
+      }
+
+      const key = getStableCandidateSemanticKey(location);
+      const group = groups.get(key) ?? [];
+      group.push(location);
+      groups.set(key, group);
+      return groups;
+    },
+    new Map<string, MushroomLocationRecord[]>(),
+  );
+
+  return nextLocations.map((location) => {
+    if ((location.sourceLayer ?? "confirmed") !== "candidate") {
+      return location;
+    }
+
+    const candidates = previousCandidatesByKey.get(getStableCandidateSemanticKey(location)) ?? [];
+    let closestPrevious: MushroomLocationRecord | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const previousLocation of candidates) {
+      const distance = getDistanceMeters(previousLocation, location);
+
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestPrevious = previousLocation;
+      }
+    }
+
+    if (!closestPrevious || closestDistance > maxSnapDistanceMeters) {
+      return location;
+    }
+
+    return {
+      ...location,
+      id: closestPrevious.id,
+      externalKey: closestPrevious.externalKey,
+      latitude: closestPrevious.latitude,
+      longitude: closestPrevious.longitude,
+    };
+  });
 }
 
 export function getCurrentLocationActionLabel(status: CurrentLocationStatus): string {
