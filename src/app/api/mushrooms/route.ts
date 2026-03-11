@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getMushroomsInViewport } from "@/lib/mushrooms/repository";
-import { parseViewport } from "@/lib/mushrooms/geo";
+import { createViewportAroundLocation, isPointInViewport, parseViewport } from "@/lib/mushrooms/geo";
 
 export async function GET(request: Request) {
   try {
@@ -18,7 +18,20 @@ export async function GET(request: Request) {
             radiusMeters: Number(radiusMeters ?? 1200),
           }
         : undefined;
-    const mushrooms = await getMushroomsInViewport(viewport, nearby ? { nearby } : undefined);
+    if (nearby) {
+      const nearbyViewport = createViewportAroundLocation(nearby);
+      const nearbyMushrooms = await getMushroomsInViewport(nearbyViewport, { nearby });
+      const mushrooms = nearbyMushrooms.filter((location) => isPointInViewport(location, viewport));
+
+      return NextResponse.json({
+        viewport,
+        nearby,
+        mushrooms,
+        nearbyMushrooms,
+      });
+    }
+
+    const mushrooms = await getMushroomsInViewport(viewport);
 
     return NextResponse.json({
       viewport,

@@ -17,6 +17,7 @@ test("buildOverpassQuery includes viewport bounds and supported tag filters", ()
 
   assert.match(query, /35\.57,139\.63,35\.58,139\.64/);
   assert.match(query, /amenity/);
+  assert.match(query, /place_of_worship/);
   assert.match(query, /shop/);
   assert.match(query, /tourism/);
   assert.match(query, /out center/);
@@ -30,6 +31,7 @@ test("buildOverpassNearbyQuery includes around center and radius", () => {
   });
 
   assert.match(query, /around:1200,35\.57764,139\.63402/);
+  assert.match(query, /place_of_worship/);
   assert.match(query, /shop/);
   assert.match(query, /railway/);
 });
@@ -126,4 +128,26 @@ test("mapOverpassResponseToLocations prefers a nearby node over the same named w
 
   assert.equal(locations.length, 1);
   assert.equal(locations[0]?.id, "overpass-node-11");
+});
+
+test("mapOverpassResponseToLocations keeps place of worship POIs as candidates", () => {
+  const locations = mapOverpassResponseToLocations({
+    elements: [
+      {
+        id: 99,
+        type: "node",
+        lat: 35.5775,
+        lon: 139.6339,
+        tags: {
+          name: "全龍寺",
+          amenity: "place_of_worship",
+          religion: "buddhist",
+        },
+      },
+    ],
+  });
+
+  assert.equal(locations.length, 1);
+  assert.equal(locations[0]?.title, "全龍寺 (OSM POI)");
+  assert.equal(locations[0]?.sourceLayer, "candidate");
 });

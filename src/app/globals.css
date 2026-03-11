@@ -111,6 +111,33 @@ body {
   width: min(300px, calc(100% - 28px));
 }
 
+.initial-location-prompt {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(7, 19, 26, 0.9);
+  border: 1px solid rgba(124, 229, 119, 0.16);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.initial-location-prompt strong {
+  font-size: 0.98rem;
+}
+
+.initial-location-prompt p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.initial-location-prompt__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .location-button {
   border: 0;
   border-radius: 999px;
@@ -464,6 +491,10 @@ body {
   cursor: not-allowed;
 }
 
+.secondary-button--ghost {
+  background: rgba(7, 19, 26, 0.75);
+}
+
 .form-grid {
   display: grid;
   gap: 12px;
@@ -532,7 +563,7 @@ body {
   display: grid;
   place-items: center;
   width: 68px;
-  height: 56px;
+  height: 36px;
   background: transparent;
   border: 0;
   padding: 0;
@@ -640,6 +671,34 @@ body {
 
 .mushroom-map-marker--layer-candidate .mushroom-map-marker__dot {
   border-style: dashed;
+}
+
+.mushroom-map-marker--compact {
+  width: 18px;
+  height: 18px;
+}
+
+.mushroom-map-marker--compact .mushroom-map-marker__cap,
+.mushroom-map-marker--compact .mushroom-map-marker__connector {
+  display: none;
+}
+
+.mushroom-map-marker--compact .mushroom-map-marker__dot {
+  top: 100%;
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.mushroom-map-marker--layer-candidate.mushroom-map-marker--compact {
+  opacity: 0.96;
+}
+
+.mushroom-map-marker--layer-candidate.mushroom-map-marker--compact .mushroom-map-marker__dot {
+  box-shadow:
+    0 0 0 4px rgba(250, 204, 21, 0.12),
+    0 4px 10px rgba(0, 0, 0, 0.22);
 }
 
 .current-location-marker {

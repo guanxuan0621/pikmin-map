@@ -1,6 +1,7 @@
 import type { MapViewport, MushroomLocationRecord } from "@/lib/mushrooms/types";
 
 const EARTH_RADIUS_METERS = 6_371_000;
+const METERS_PER_DEGREE_LATITUDE = 111_320;
 
 export function isPointInViewport(
   location: Pick<MushroomLocationRecord, "latitude" | "longitude">,
@@ -61,4 +62,21 @@ export function parseViewport(searchParams: URLSearchParams): MapViewport {
   }
 
   return { minLat, maxLat, minLng, maxLng };
+}
+
+export function createViewportAroundLocation(input: {
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+}): MapViewport {
+  const latitudeDelta = input.radiusMeters / METERS_PER_DEGREE_LATITUDE;
+  const longitudeScale = Math.max(Math.cos(toRadians(input.latitude)), 0.01);
+  const longitudeDelta = input.radiusMeters / (METERS_PER_DEGREE_LATITUDE * longitudeScale);
+
+  return {
+    minLat: input.latitude - latitudeDelta,
+    maxLat: input.latitude + latitudeDelta,
+    minLng: input.longitude - longitudeDelta,
+    maxLng: input.longitude + longitudeDelta,
+  };
 }

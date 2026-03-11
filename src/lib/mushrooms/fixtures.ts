@@ -49,6 +49,27 @@ export const fixtureLocations: MushroomLocationRecord[] = [
       lastComputedAt: new Date(now - 1000 * 60 * 2).toISOString(),
     },
   },
+  {
+    id: "loc-fake-near-you",
+    externalKey: "35.57798:139.63432",
+    title: "Fake Mushroom Near You",
+    latitude: 35.57798,
+    longitude: 139.63432,
+    sourceLayer: "confirmed",
+    derivedState: {
+      currentStatus: "ACTIVE",
+      confidence: 63,
+      sourceObservationCount: 1,
+      lastObservedAt: new Date(now - 1000 * 60 * 3).toISOString(),
+      staleAt: new Date(now + 1000 * 60 * 57).toISOString(),
+    },
+    prediction: {
+      status: "UNAVAILABLE",
+      confidence: 0,
+      provenance: "demo-fixture",
+      lastComputedAt: new Date(now - 1000 * 60 * 3).toISOString(),
+    },
+  },
 ];
 
 export const fixtureObservations: ObservationRecord[] = [

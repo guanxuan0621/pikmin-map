@@ -4,8 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type Map } from "maplibre-gl";
 import type { StyleSpecification } from "maplibre-gl";
 
+import {
+  buildMushroomApiCacheKey,
+  getOrCreateMushroomApiRequest,
+  getCachedMushroomsPayload,
+  getVisibleMushroomsFromCachedPayload,
+  setCachedMushroomsPayload,
+} from "@/lib/mushrooms/client-cache";
+import {
+  readRememberedCurrentLocation,
+  writeRememberedCurrentLocation,
+} from "@/lib/mushrooms/current-location-storage";
 import { formatDistance, getDistanceMeters } from "@/lib/mushrooms/geo";
-import type { MushroomLocationRecord, MushroomLocationSourceLayer } from "@/lib/mushrooms/types";
+import type {
+  MapViewport,
+  MushroomLocationRecord,
+  MushroomLocationSourceLayer,
+} from "@/lib/mushrooms/types";
 import {
   buildCurrentLocationRecenterPlan,
   buildMushroomMarkerShortLabelMap,
@@ -13,12 +28,14 @@ import {
   getCurrentLocationActionLabel,
   getCurrentLocationStatusMessage,
   getGeolocationErrorMessage,
+  getInitialLocationPromptMessage,
   getMushroomMarkerLabel,
   getMushroomMarkerShortLabel,
   getMushroomSourceLayerLabel,
   getMushroomMarkerTone,
   MARKER_LEGEND_ITEMS,
   MUSHROOM_LAYER_ITEMS,
+  shouldShowInitialLocationPrompt,
   type CurrentLocationStatus,
 } from "@/lib/mushrooms/map-ui";
 
@@ -35,6 +52,9 @@ type ObservationFormState = {
 const TILE_MAX_ZOOM = 19;
 const VIEWPORT_PRECISION = 5;
 const NEARBY_RADIUS_METERS = 1200;
+const DEFAULT_MAP_CENTER: [number, number] = [121.53431, 25.03291];
+const DEFAULT_MAP_ZOOM = 12.4;
+const COMPACT_CANDIDATE_MARKER_THRESHOLD = 80;
 
 const MAP_STYLE: StyleSpecification = {
   version: 8,
@@ -111,6 +131,15 @@ function getLocationSourceLayer(location: MushroomLocationRecord): MushroomLocat
   return location.sourceLayer ?? "confirmed";
 }
 
+function toViewport(bounds: maplibregl.LngLatBounds): MapViewport {
+  return {
+    minLat: bounds.getSouth(),
+    maxLat: bounds.getNorth(),
+    minLng: bounds.getWest(),
+    maxLng: bounds.getEast(),
+  };
+}
+
 export function MushroomMapClient() {
   const mapRef = useRef<Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -121,7 +150,6 @@ export function MushroomMapClient() {
   });
   const refreshMushroomsRef = useRef<() => void>(() => {});
   const lastLocationRefreshKeyRef = useRef<string | null>(null);
-  const lastViewportKeyRef = useRef<string | null>(null);
   const [mushrooms, setMushrooms] = useState<MushroomLocationRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -130,6 +158,11 @@ export function MushroomMapClient() {
   const [currentLocation, setCurrentLocation] = useState<CurrentLocationState>({
     status: "idle",
   });
+  const [hasHandledInitialLocationPrompt, setHasHandledInitialLocationPrompt] = useState(false);
+  const [isMapReady, setIsMapReady] = useState(false);
+  const [isLocationHydrated, setIsLocationHydrated] = useState(false);
+  const [initialMapCenter, setInitialMapCenter] = useState<[number, number]>(DEFAULT_MAP_CENTER);
+  const [initialMapZoom, setInitialMapZoom] = useState(DEFAULT_MAP_ZOOM);
   const [layerVisibility, setLayerVisibility] = useState<LayerVisibilityState>({
     confirmed: true,
     candidate: true,
@@ -197,6 +230,7 @@ export function MushroomMapClient() {
     () => sortedMushrooms.filter((mushroom) => layerVisibility[getLocationSourceLayer(mushroom)]),
     [layerVisibility, sortedMushrooms],
   );
+  const useCompactCandidateMarkers = layerCounts.candidate >= COMPACT_CANDIDATE_MARKER_THRESHOLD;
 
   const toggleLayerVisibility = useCallback((layer: MushroomLocationSourceLayer, checked: boolean) => {
     setLayerVisibility((current) => {
@@ -236,9 +270,10 @@ export function MushroomMapClient() {
     const element = document.createElement("button");
     const tone = getMushroomMarkerTone(mushroom.derivedState?.currentStatus);
     const layer = getLocationSourceLayer(mushroom);
+    const isCompactCandidate = layer === "candidate" && useCompactCandidateMarkers;
 
     element.type = "button";
-    element.className = `mushroom-map-marker mushroom-map-marker--${tone} mushroom-map-marker--layer-${layer}`;
+    element.className = `mushroom-map-marker mushroom-map-marker--${tone} mushroom-map-marker--layer-${layer}${isCompactCandidate ? " mushroom-map-marker--compact" : ""}`;
     element.setAttribute("aria-label", getMushroomMarkerLabel(mushroom));
     element.title = mushroom.title ?? mushroom.externalKey;
 
@@ -256,7 +291,7 @@ export function MushroomMapClient() {
     cap.append(shortLabel);
     element.append(cap, connector, dot);
     return element;
-  }, [markerShortLabelMap]);
+  }, [markerShortLabelMap, useCompactCandidateMarkers]);
 
   const createCurrentLocationElement = useCallback(() => {
     const element = document.createElement("div");
@@ -311,7 +346,7 @@ export function MushroomMapClient() {
     markersRef.current = nextMushrooms.map((mushroom) => {
       const marker = new maplibregl.Marker({
         element: createMushroomMarkerElement(mushroom),
-        anchor: "center",
+        anchor: "bottom",
       })
         .setLngLat([mushroom.longitude, mushroom.latitude])
         .setPopup(
@@ -364,11 +399,12 @@ export function MushroomMapClient() {
     }
 
     const bounds = mapRef.current.getBounds();
+    const viewport = toViewport(bounds);
     const query = new URLSearchParams({
-      minLat: formatViewportCoordinate(bounds.getSouth()),
-      maxLat: formatViewportCoordinate(bounds.getNorth()),
-      minLng: formatViewportCoordinate(bounds.getWest()),
-      maxLng: formatViewportCoordinate(bounds.getEast()),
+      minLat: formatViewportCoordinate(viewport.minLat),
+      maxLat: formatViewportCoordinate(viewport.maxLat),
+      minLng: formatViewportCoordinate(viewport.minLng),
+      maxLng: formatViewportCoordinate(viewport.maxLng),
     });
     const activeLocation = currentLocationRef.current;
 
@@ -382,23 +418,45 @@ export function MushroomMapClient() {
       query.set("radiusMeters", String(NEARBY_RADIUS_METERS));
     }
 
-    const viewportKey = query.toString();
+    const requestKey = query.toString();
+    const cacheKey = buildMushroomApiCacheKey(query);
+    const cachedPayload = getCachedMushroomsPayload(cacheKey);
 
-    if (viewportKey === lastViewportKeyRef.current) {
+    if (cachedPayload) {
+      const visibleMushrooms = getVisibleMushroomsFromCachedPayload(cachedPayload, viewport);
+      setMushrooms(visibleMushrooms);
+      setSelectedId((current) =>
+        visibleMushrooms.some((mushroom) => mushroom.id === current)
+          ? current
+          : visibleMushrooms[0]?.id ?? null,
+      );
       return;
     }
 
-    const response = await fetch(`/api/mushrooms?${viewportKey}`);
-    const payload = (await response.json()) as { mushrooms: MushroomLocationRecord[] };
+    const nextCachedPayload = await getOrCreateMushroomApiRequest(cacheKey, async () => {
+      const response = await fetch(`/api/mushrooms?${requestKey}`);
+      const payload = (await response.json()) as {
+        mushrooms: MushroomLocationRecord[];
+        nearbyMushrooms?: MushroomLocationRecord[];
+      };
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch mushrooms for the current viewport.");
-    }
+      if (!response.ok) {
+        throw new Error("Failed to fetch mushrooms for the current viewport.");
+      }
 
-    lastViewportKeyRef.current = viewportKey;
-    setMushrooms(payload.mushrooms);
+      const resolvedPayload = {
+        mushrooms: payload.mushrooms,
+        nearbyMushrooms: payload.nearbyMushrooms,
+      };
+
+      setCachedMushroomsPayload(cacheKey, resolvedPayload);
+      return resolvedPayload;
+    });
+    const visibleMushrooms = getVisibleMushroomsFromCachedPayload(nextCachedPayload, viewport);
+
+    setMushrooms(visibleMushrooms);
     setSelectedId((current) =>
-      payload.mushrooms.some((mushroom) => mushroom.id === current) ? current : payload.mushrooms[0]?.id ?? null,
+      visibleMushrooms.some((mushroom) => mushroom.id === current) ? current : visibleMushrooms[0]?.id ?? null,
     );
   }, []);
 
@@ -426,8 +484,6 @@ export function MushroomMapClient() {
         targetLongitude: longitude,
         minimumZoom: CURRENT_LOCATION_ZOOM,
       });
-
-      lastViewportKeyRef.current = null;
 
       if (!needsMove) {
         refreshMushrooms();
@@ -482,7 +538,11 @@ export function MushroomMapClient() {
 
         currentLocationRef.current = nextLocation;
         setCurrentLocation(nextLocation);
-        lastViewportKeyRef.current = null;
+        writeRememberedCurrentLocation({
+          latitude,
+          longitude,
+          accuracyMeters: position.coords.accuracy,
+        });
         syncCurrentLocationMarker(latitude, longitude);
         recenterToCurrentLocation(latitude, longitude);
       },
@@ -507,24 +567,54 @@ export function MushroomMapClient() {
     );
   }, [currentLocation, recenterToCurrentLocation, syncCurrentLocationMarker]);
 
+  const handleInitialLocationPromptAccept = useCallback(() => {
+    setHasHandledInitialLocationPrompt(true);
+    handleCurrentLocationAction();
+  }, [handleCurrentLocationAction]);
+
+  const handleInitialLocationPromptDismiss = useCallback(() => {
+    setHasHandledInitialLocationPrompt(true);
+  }, []);
+
   useEffect(() => {
     currentLocationRef.current = currentLocation;
   }, [currentLocation]);
+
+  useEffect(() => {
+    const rememberedLocation = readRememberedCurrentLocation();
+
+    if (rememberedLocation) {
+      const nextLocation: CurrentLocationState = {
+        status: "available",
+        latitude: rememberedLocation.latitude,
+        longitude: rememberedLocation.longitude,
+        accuracyMeters: rememberedLocation.accuracyMeters,
+      };
+
+      currentLocationRef.current = nextLocation;
+      setCurrentLocation(nextLocation);
+      setHasHandledInitialLocationPrompt(true);
+      setInitialMapCenter([rememberedLocation.longitude, rememberedLocation.latitude]);
+      setInitialMapZoom(CURRENT_LOCATION_ZOOM);
+    }
+
+    setIsLocationHydrated(true);
+  }, []);
 
   useEffect(() => {
     refreshMushroomsRef.current = refreshMushrooms;
   }, [refreshMushrooms]);
 
   useEffect(() => {
-    if (mapRef.current || !mapContainerRef.current) {
+    if (!isLocationHydrated || mapRef.current || !mapContainerRef.current) {
       return;
     }
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: MAP_STYLE,
-      center: [121.53431, 25.03291],
-      zoom: 12.4,
+      center: initialMapCenter,
+      zoom: initialMapZoom,
       maxZoom: TILE_MAX_ZOOM,
     });
 
@@ -538,6 +628,7 @@ export function MushroomMapClient() {
       );
     });
     map.on("load", () => {
+      setIsMapReady(true);
       refreshMushroomsRef.current();
     });
     map.on("moveend", () => {
@@ -554,11 +645,12 @@ export function MushroomMapClient() {
     mapRef.current = map;
 
     return () => {
+      setIsMapReady(false);
       currentLocationMarkerRef.current?.remove();
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [initialMapCenter, initialMapZoom, isLocationHydrated]);
 
   useEffect(() => {
     if (!selectedMushroom) {
@@ -593,9 +685,16 @@ export function MushroomMapClient() {
     }
 
     lastLocationRefreshKeyRef.current = locationRefreshKey;
-    lastViewportKeyRef.current = null;
     refreshMushroomsRef.current();
   }, [currentLocation.latitude, currentLocation.longitude, currentLocation.status]);
+
+  const showInitialLocationPrompt =
+    isLocationHydrated &&
+    shouldShowInitialLocationPrompt({
+      currentLocationStatus: currentLocation.status,
+      hasHandledPrompt: hasHandledInitialLocationPrompt,
+      isMapReady,
+    });
 
   const submitObservation = useCallback(async () => {
     setIsSubmitting(true);
@@ -652,17 +751,45 @@ export function MushroomMapClient() {
       <section className="app-grid">
         <div className="map-card">
           <div className="map-overlay">
-            <button
-              className="location-button"
-              disabled={currentLocation.status === "requesting"}
-              onClick={handleCurrentLocationAction}
-              type="button"
-            >
-              {getCurrentLocationActionLabel(currentLocation.status)}
-            </button>
-            <p className={`location-status location-status--${currentLocation.status}`}>
-              {getCurrentLocationStatusMessage(currentLocation.status)}
-            </p>
+            {showInitialLocationPrompt ? (
+              <div className="initial-location-prompt">
+                <strong>先定位你的位置？</strong>
+                <p>{getInitialLocationPromptMessage()}</p>
+                <div className="initial-location-prompt__actions">
+                  <button
+                    className="location-button"
+                    onClick={handleInitialLocationPromptAccept}
+                    type="button"
+                  >
+                    定位我目前位置
+                  </button>
+                  <button
+                    className="secondary-button secondary-button--ghost"
+                    onClick={handleInitialLocationPromptDismiss}
+                    type="button"
+                  >
+                    先看地圖
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  className="location-button"
+                  disabled={currentLocation.status === "requesting"}
+                  onClick={() => {
+                    setHasHandledInitialLocationPrompt(true);
+                    handleCurrentLocationAction();
+                  }}
+                  type="button"
+                >
+                  {getCurrentLocationActionLabel(currentLocation.status)}
+                </button>
+                <p className={`location-status location-status--${currentLocation.status}`}>
+                  {getCurrentLocationStatusMessage(currentLocation.status)}
+                </p>
+              </>
+            )}
           </div>
           <div ref={mapContainerRef} className="map-surface" />
         </div>

@@ -31,6 +31,9 @@ type OverpassLocationCandidate = MushroomLocationRecord & {
 const DEFAULT_OVERPASS_API_URL = "https://overpass-api.de/api/interpreter";
 const DEFAULT_OVERPASS_TIMEOUT_MS = 7_000;
 const OVERPASS_CACHE_TTL_MS = 10 * 60 * 1000;
+const SUPPORTED_AMENITIES = "^(cafe|restaurant|fast_food|pharmacy|post_office|place_of_worship)$";
+const SUPPORTED_SHOPS = "^(convenience|supermarket|bakery|hairdresser)$";
+const SUPPORTED_TOURISM = "^(hotel|theme_park|zoo)$";
 
 const overpassCache = new Map<
   string,
@@ -144,18 +147,18 @@ export function buildOverpassQuery(viewport: MapViewport): string {
   return `
 [out:json][timeout:25];
 (
-  node(${box})[amenity~"^(cafe|restaurant|fast_food|pharmacy|post_office)$"];
-  node(${box})[shop~"^(convenience|supermarket|bakery|hairdresser)$"];
-  node(${box})[tourism~"^(hotel|theme_park|zoo)$"];
+  node(${box})[amenity~"${SUPPORTED_AMENITIES}"];
+  node(${box})[shop~"${SUPPORTED_SHOPS}"];
+  node(${box})[tourism~"${SUPPORTED_TOURISM}"];
   node(${box})[leisure="park"];
   node(${box})[railway="station"];
-  way(${box})[amenity~"^(cafe|restaurant|fast_food|pharmacy|post_office)$"];
-  way(${box})[shop~"^(convenience|supermarket|bakery|hairdresser)$"];
-  way(${box})[tourism~"^(hotel|theme_park|zoo)$"];
+  way(${box})[amenity~"${SUPPORTED_AMENITIES}"];
+  way(${box})[shop~"${SUPPORTED_SHOPS}"];
+  way(${box})[tourism~"${SUPPORTED_TOURISM}"];
   way(${box})[leisure="park"];
   way(${box})[railway="station"];
 );
-out center 40;
+out center;
 `.trim();
 }
 
@@ -165,18 +168,18 @@ export function buildOverpassNearbyQuery(nearby: OverpassNearbyQuery): string {
   return `
 [out:json][timeout:25];
 (
-  node(around:${around})[amenity~"^(cafe|restaurant|fast_food|pharmacy|post_office)$"];
-  node(around:${around})[shop~"^(convenience|supermarket|bakery|hairdresser)$"];
-  node(around:${around})[tourism~"^(hotel|theme_park|zoo)$"];
+  node(around:${around})[amenity~"${SUPPORTED_AMENITIES}"];
+  node(around:${around})[shop~"${SUPPORTED_SHOPS}"];
+  node(around:${around})[tourism~"${SUPPORTED_TOURISM}"];
   node(around:${around})[leisure="park"];
   node(around:${around})[railway="station"];
-  way(around:${around})[amenity~"^(cafe|restaurant|fast_food|pharmacy|post_office)$"];
-  way(around:${around})[shop~"^(convenience|supermarket|bakery|hairdresser)$"];
-  way(around:${around})[tourism~"^(hotel|theme_park|zoo)$"];
+  way(around:${around})[amenity~"${SUPPORTED_AMENITIES}"];
+  way(around:${around})[shop~"${SUPPORTED_SHOPS}"];
+  way(around:${around})[tourism~"${SUPPORTED_TOURISM}"];
   way(around:${around})[leisure="park"];
   way(around:${around})[railway="station"];
 );
-out center 60;
+out center;
 `.trim();
 }
 

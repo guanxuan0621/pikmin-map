@@ -174,6 +174,22 @@ export function getCurrentLocationStatusMessage(status: CurrentLocationStatus): 
   }
 }
 
+export function shouldShowInitialLocationPrompt(input: {
+  currentLocationStatus: CurrentLocationStatus;
+  hasHandledPrompt: boolean;
+  isMapReady: boolean;
+}): boolean {
+  return (
+    input.isMapReady &&
+    !input.hasHandledPrompt &&
+    input.currentLocationStatus === "idle"
+  );
+}
+
+export function getInitialLocationPromptMessage(): string {
+  return "要先定位你目前的位置嗎？這樣地圖一打開就能直接跳到你附近。";
+}
+
 export function getGeolocationErrorMessage(error?: Pick<GeolocationPositionError, "code">): string {
   if (!error) {
     return getCurrentLocationStatusMessage("error");

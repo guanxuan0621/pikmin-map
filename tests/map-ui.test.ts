@@ -7,10 +7,12 @@ import {
   getCurrentLocationActionLabel,
   getCurrentLocationStatusMessage,
   getGeolocationErrorMessage,
+  getInitialLocationPromptMessage,
   getMushroomMarkerTone,
   getMushroomMarkerShortLabel,
   getMushroomSourceLayerLabel,
   MARKER_LEGEND_ITEMS,
+  shouldShowInitialLocationPrompt,
 } from "../src/lib/mushrooms/map-ui";
 
 test("getMushroomMarkerTone maps active, defeated, and unknown states", () => {
@@ -35,6 +37,40 @@ test("getGeolocationErrorMessage distinguishes denial, unavailable, and timeout 
   assert.match(getGeolocationErrorMessage({ code: 1 }), /拒絕定位權限/);
   assert.match(getGeolocationErrorMessage({ code: 2 }), /無法取得目前位置/);
   assert.match(getGeolocationErrorMessage({ code: 3 }), /定位逾時/);
+});
+
+test("shouldShowInitialLocationPrompt only returns true for the initial idle map state", () => {
+  assert.equal(
+    shouldShowInitialLocationPrompt({
+      currentLocationStatus: "idle",
+      hasHandledPrompt: false,
+      isMapReady: true,
+    }),
+    true,
+  );
+
+  assert.equal(
+    shouldShowInitialLocationPrompt({
+      currentLocationStatus: "available",
+      hasHandledPrompt: false,
+      isMapReady: true,
+    }),
+    false,
+  );
+
+  assert.equal(
+    shouldShowInitialLocationPrompt({
+      currentLocationStatus: "idle",
+      hasHandledPrompt: true,
+      isMapReady: true,
+    }),
+    false,
+  );
+});
+
+test("getInitialLocationPromptMessage explains the first-open location choice", () => {
+  assert.match(getInitialLocationPromptMessage(), /定位/);
+  assert.match(getInitialLocationPromptMessage(), /地圖一打開/);
 });
 
 test("marker legend includes current location and mushroom state guidance", () => {
