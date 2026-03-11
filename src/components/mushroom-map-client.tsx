@@ -112,10 +112,15 @@ function getLocationSourceLayer(location: MushroomLocationRecord): MushroomLocat
   return location.sourceLayer ?? "confirmed";
 }
 
+type MarkerEntry = {
+  marker: maplibregl.Marker;
+  clickHandler: () => void;
+};
+
 export function MushroomMapClient() {
   const mapRef = useRef<Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const markersRef = useRef<Map<string, MarkerEntry>>(new Map());
   const currentLocationMarkerRef = useRef<maplibregl.Marker | null>(null);
   const currentLocationRef = useRef<CurrentLocationState>({
     status: "idle",
@@ -302,36 +307,70 @@ export function MushroomMapClient() {
   }, [currentLatitude, currentLongitude]);
 
   const syncMarkers = useCallback((nextMushrooms: MushroomLocationRecord[]) => {
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = [];
+    const map = mapRef.current;
 
-    if (!mapRef.current) {
+    if (!map) {
       return;
     }
 
-    markersRef.current = nextMushrooms.map((mushroom) => {
+    const activeMarkerIds = new Set(nextMushrooms.map((mushroom) => mushroom.id));
+
+    markersRef.current.forEach((entry, markerId) => {
+      if (activeMarkerIds.has(markerId)) {
+        return;
+      }
+
+      entry.marker.getElement().removeEventListener("click", entry.clickHandler);
+      entry.marker.remove();
+      markersRef.current.delete(markerId);
+    });
+
+    nextMushrooms.forEach((mushroom) => {
+      const existingEntry = markersRef.current.get(mushroom.id);
+      const popupHtml = `<strong>${mushroom.title ?? mushroom.externalKey}</strong><br/>${getMushroomSourceLayerLabel(
+        getLocationSourceLayer(mushroom),
+      )}<br/>${mushroom.derivedState?.currentStatus ?? "UNKNOWN"}`;
+
+      if (existingEntry) {
+        existingEntry.marker.setLngLat([mushroom.longitude, mushroom.latitude]);
+        existingEntry.marker.setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(popupHtml));
+
+        const nextElement = createMushroomMarkerElement(mushroom);
+        const currentElement = existingEntry.marker.getElement();
+        currentElement.className = nextElement.className;
+        currentElement.setAttribute("aria-label", nextElement.getAttribute("aria-label") ?? "");
+        currentElement.setAttribute("title", nextElement.getAttribute("title") ?? "");
+        currentElement.replaceChildren(...Array.from(nextElement.childNodes));
+
+        currentElement.removeEventListener("click", existingEntry.clickHandler);
+        const nextClickHandler = () => {
+          setSelectedId(mushroom.id);
+          applySelectedMushroomToForm(mushroom);
+        };
+        currentElement.addEventListener("click", nextClickHandler);
+        markersRef.current.set(mushroom.id, {
+          marker: existingEntry.marker,
+          clickHandler: nextClickHandler,
+        });
+        return;
+      }
+
       const marker = new maplibregl.Marker({
         element: createMushroomMarkerElement(mushroom),
         anchor: "center",
       })
         .setLngLat([mushroom.longitude, mushroom.latitude])
-        .setPopup(
-          new maplibregl.Popup({ offset: 12 }).setHTML(
-            `<strong>${mushroom.title ?? mushroom.externalKey}</strong><br/>${getMushroomSourceLayerLabel(
-              getLocationSourceLayer(mushroom),
-            )}<br/>${mushroom.derivedState?.currentStatus ?? "UNKNOWN"}`,
-          ),
-        )
-        .addTo(mapRef.current!);
+        .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(popupHtml))
+        .addTo(map);
 
-      marker.getElement().addEventListener("click", () => {
+      const clickHandler = () => {
         setSelectedId(mushroom.id);
         applySelectedMushroomToForm(mushroom);
-      });
-
-      return marker;
+      };
+      marker.getElement().addEventListener("click", clickHandler);
+      markersRef.current.set(mushroom.id, { marker, clickHandler });
     });
-  }, [createMushroomMarkerElement]);
+  }, [applySelectedMushroomToForm, createMushroomMarkerElement]);
 
   const syncCurrentLocationMarker = useCallback(
     (latitude?: number, longitude?: number) => {
@@ -564,7 +603,13 @@ export function MushroomMapClient() {
     mapRef.current = map;
 
     return () => {
+      const markers = markersRef.current;
       currentLocationMarkerRef.current?.remove();
+      markers.forEach((entry) => {
+        entry.marker.getElement().removeEventListener("click", entry.clickHandler);
+        entry.marker.remove();
+      });
+      markers.clear();
       map.remove();
       mapRef.current = null;
     };
