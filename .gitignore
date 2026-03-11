@@ -6,3 +6,8 @@ node_modules
 .env.local
 dist
 coverage
+
+# local browser/test artifacts
+browser-*.png
+playwright-inspect.png
+test-results/
