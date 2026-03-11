@@ -5,6 +5,7 @@ import { createLocationExternalKey, getDistanceMeters, isPointInViewport } from 
 import {
   fetchOverpassMushroomCandidates,
   fetchOverpassNearbyMushroomCandidates,
+  mergeOverpassCandidateLocations,
   type OverpassNearbyQuery,
 } from "@/lib/mushrooms/overpass";
 import type {
@@ -108,6 +109,20 @@ function mergeConfirmedAndCandidates(
   return [...confirmedLocations, ...filteredCandidates];
 }
 
+async function fetchCandidateLocations(
+  viewport: MapViewport,
+  nearby?: OverpassNearbyQuery,
+): Promise<MushroomLocationRecord[]> {
+  const [viewportCandidates, nearbyCandidates] = await Promise.all([
+    fetchOverpassMushroomCandidates(viewport),
+    nearby ? fetchOverpassNearbyMushroomCandidates(nearby) : Promise.resolve([]),
+  ]);
+
+  return mergeOverpassCandidateLocations(viewportCandidates, nearbyCandidates).filter((location) =>
+    isPointInViewport(location, viewport),
+  );
+}
+
 export async function getMushroomsInViewport(
   viewport: MapViewport,
   options?: {
@@ -126,12 +141,7 @@ export async function getMushroomsInViewport(
       }));
 
     try {
-      const overpassLocations = options?.nearby
-        ? await fetchOverpassNearbyMushroomCandidates(options.nearby)
-        : await fetchOverpassMushroomCandidates(viewport);
-      candidateLocations = overpassLocations.filter((location) =>
-        isPointInViewport(location, viewport),
-      );
+      candidateLocations = await fetchCandidateLocations(viewport, options?.nearby);
     } catch (error) {
       console.warn(
         error instanceof Error
@@ -172,11 +182,7 @@ export async function getMushroomsInViewport(
   const confirmedLocations = locations.map(mapPrismaLocation);
 
   try {
-    const overpassLocations = options?.nearby
-      ? await fetchOverpassNearbyMushroomCandidates(options.nearby)
-      : await fetchOverpassMushroomCandidates(viewport);
-
-    candidateLocations = overpassLocations.filter((location) => isPointInViewport(location, viewport));
+    candidateLocations = await fetchCandidateLocations(viewport, options?.nearby);
   } catch (error) {
     console.warn(
       error instanceof Error ? `Overpass candidate fetch failed: ${error.message}` : "Overpass candidate fetch failed.",
