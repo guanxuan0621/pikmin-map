@@ -653,13 +653,10 @@ export function MushroomMapClient() {
           : "Map failed to load. Please refresh the page.",
       );
     });
-<<<<<<< HEAD
     map.on("load", () => {
       setIsMapReady(true);
       refreshMushroomsRef.current();
     });
-=======
->>>>>>> 567fd44 (Render mushroom POIs with map layers)
     map.on("moveend", () => {
       refreshMushroomsRef.current();
     });
