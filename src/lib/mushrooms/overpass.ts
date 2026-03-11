@@ -114,6 +114,10 @@ function getElementCategory(tags: Record<string, string>): string {
   return tags.amenity ?? tags.shop ?? tags.tourism ?? tags.leisure ?? tags.railway ?? "unknown";
 }
 
+function stripOsmSuffix(value: string): string {
+  return value.replace(/\s*\(OSM POI\)\s*$/u, "").trim();
+}
+
 function mapOverpassElementToLocation(element: OverpassElement): OverpassLocationCandidate | null {
   const coordinates = getElementCoordinates(element);
 
@@ -180,18 +184,14 @@ out center 60;
 `.trim();
 }
 
-export function mapOverpassResponseToLocations(payload: OverpassResponse): MushroomLocationRecord[] {
+function dedupeCandidateLocations(
+  candidates: OverpassLocationCandidate[],
+): MushroomLocationRecord[] {
   const dedupedByCoordinate = new Map<string, OverpassLocationCandidate>();
   const mergedCandidates: OverpassLocationCandidate[] = [];
 
-  for (const element of payload.elements ?? []) {
-    const location = mapOverpassElementToLocation(element);
-
-    if (!location) {
-      continue;
-    }
-
-    dedupedByCoordinate.set(location.externalKey, location);
+  for (const candidate of candidates) {
+    dedupedByCoordinate.set(candidate.externalKey, candidate);
   }
 
   for (const candidate of dedupedByCoordinate.values()) {
@@ -200,9 +200,7 @@ export function mapOverpassResponseToLocations(payload: OverpassResponse): Mushr
         return false;
       }
 
-      return (
-        getDistanceMeters(existing, candidate) <= 60
-      );
+      return getDistanceMeters(existing, candidate) <= 60;
     });
 
     if (existingIndex === -1) {
@@ -217,9 +215,37 @@ export function mapOverpassResponseToLocations(payload: OverpassResponse): Mushr
     }
   }
 
-  return mergedCandidates.map(({ dedupeKey: _dedupeKey, sourceType: _sourceType, ...location }) => location).sort((left, right) =>
-    left.title?.localeCompare(right.title ?? "", "ja") ?? 0,
-  );
+  return mergedCandidates
+    .map(({ dedupeKey: _dedupeKey, sourceType: _sourceType, ...location }) => location)
+    .sort((left, right) => left.title?.localeCompare(right.title ?? "", "ja") ?? 0);
+}
+
+export function mapOverpassResponseToLocations(payload: OverpassResponse): MushroomLocationRecord[] {
+  const candidates: OverpassLocationCandidate[] = [];
+
+  for (const element of payload.elements ?? []) {
+    const location = mapOverpassElementToLocation(element);
+
+    if (!location) {
+      continue;
+    }
+
+    candidates.push(location);
+  }
+
+  return dedupeCandidateLocations(candidates);
+}
+
+export function mergeOverpassCandidateLocations(
+  ...candidateGroups: MushroomLocationRecord[][]
+): MushroomLocationRecord[] {
+  const flattenedCandidates: OverpassLocationCandidate[] = candidateGroups.flat().map((location) => ({
+    ...location,
+    dedupeKey: `${stripOsmSuffix(location.title ?? location.externalKey).toLowerCase()}::candidate`,
+    sourceType: location.id.startsWith("overpass-node-") ? "node" : "way",
+  }));
+
+  return dedupeCandidateLocations(flattenedCandidates);
 }
 
 async function performOverpassQuery(
